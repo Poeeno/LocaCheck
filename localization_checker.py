@@ -20,7 +20,7 @@ def load_checklist(file_path):
             with open(file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
-            print(f"⚠️ Ошибка загрузки файла прогресса: {e}")
+            print(f"[!] Ошибка загрузки файла прогресса: {e}")
             return {}
     return {}
 
@@ -31,15 +31,27 @@ def save_checklist(file_path, checklist):
             json.dump(checklist, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
-        print(f"⚠️ Ошибка сохранения файла прогресса: {e}")
+        print(f"[!] Ошибка сохранения файла прогресса: {e}")
         return False
 
+def should_skip_line(line):
+    """Определяет, нужно ли пропускать строку (комментарии или Robast)"""
+    # Пропускаем пустые строки и комментарии
+    if not line or line.startswith('#'):
+        return True
+        
+    # Пропускаем строки, содержащие Robast
+    if 'Robast' in line:
+        return True
+        
+    return False
+
 def parse_keys(file_path):
-    """Быстрый парсинг файла локализации"""
+    """Быстрый парсинг файла локализации с фильтрацией"""
     keys = OrderedDict()
     
     if not os.path.exists(file_path):
-        print(f"⛔ Файл не найден: {file_path}")
+        print(f"[X] Файл не найден: {file_path}")
         return keys
         
     try:
@@ -48,7 +60,12 @@ def parse_keys(file_path):
             # Обрабатываем строки в обратном порядке
             for line in reversed(lines):
                 line = line.strip()
-                if not line or '鎰' not in line:
+                
+                # Пропускаем комментарии и строки с Robast
+                if should_skip_line(line):
+                    continue
+                    
+                if '鎰' not in line:
                     continue
                     
                 parts = line.split('鎰', 1)
@@ -60,10 +77,10 @@ def parse_keys(file_path):
                 # Используем оригинальную строку как ключ
                 keys[f"{path}鎰{key}"] = (path, key, clean)
                 
-        print(f"✅ Загружено ключей: {len(keys)}")
+        print(f"[V] Загружено ключей: {len(keys)}")
         return keys
     except Exception as e:
-        print(f"⛔ Ошибка чтения файла {file_path}: {e}")
+        print(f"[X] Ошибка чтения файла {file_path}: {e}")
         return keys
 
 def get_untranslated_keys(original_keys, russian_keys, checklist):
@@ -75,7 +92,7 @@ def get_untranslated_keys(original_keys, russian_keys, checklist):
     for key_id, (path, key, clean) in original_keys.items():
         if clean not in russian_keys:
             # Пропускаем отмеченные как переведенные
-            if checklist.get(key_id) == "✅":
+            if checklist.get(key_id) == "V":
                 continue
             all_untranslated.append((path, key, key_id))
     
@@ -92,7 +109,7 @@ def get_untranslated_keys(original_keys, russian_keys, checklist):
 def print_progress(current, total):
     """Печатает прогресс-бар"""
     if total == 0:
-        print("\n🎉 Все ключи переведены!")
+        print("\n[V] Все ключи переведены!")
         return
         
     bar_length = 30
@@ -107,10 +124,10 @@ def print_progress(current, total):
 def print_file_help(script_dir):
     """Показывает инструкцию по размещению файлов"""
     print("\n" + "═"*50)
-    print("📂 ИНСТРУКЦИЯ ПО РАЗМЕЩЕНИЮ ФАЙЛОВ")
+    print("[F] ИНСТРУКЦИЯ ПО РАЗМЕЩЕНИЮ ФАЙЛОВ")
     print("═"*50)
     print(f"1. Поместите файлы локализации в папку скрипта:")
-    print(f"   📁 {script_dir}")
+    print(f"   [F] {script_dir}")
     print("2. Убедитесь, что файлы называются:")
     print("   - original.txt - исходная локализация (например, английская)")
     print("   - russian.txt - русская локализация")
@@ -134,21 +151,21 @@ def main():
 
     # Выводим информацию о файлах
     print("\n" + "═"*50)
-    print(f"🖥  Текущий рабочий каталог: {os.getcwd()}")
-    print(f"📂 Папка скрипта: {script_dir}")
-    print(f"🔍 Исходная локализация: {args.original}")
-    print(f"🔍 Русская локализация: {args.russian}")
-    print(f"📊 Файл прогресса: {args.progress}")
+    print(f"[C] Текущий рабочий каталог: {os.getcwd()}")
+    print(f"[F] Папка скрипта: {script_dir}")
+    print(f"[*] Исходная локализация: {args.original}")
+    print(f"[*] Русская локализация: {args.russian}")
+    print(f"[P] Файл прогресса: {args.progress}")
     print("═"*50)
     
     # Проверка существования файлов
     files_exist = True
     if not os.path.exists(args.original):
-        print(f"\n⛔ ФАЙЛ НЕ НАЙДЕН: {args.original}")
+        print(f"\n[X] ФАЙЛ НЕ НАЙДЕН: {args.original}")
         files_exist = False
     
     if not os.path.exists(args.russian):
-        print(f"\n⛔ ФАЙЛ НЕ НАЙДЕН: {args.russian}")
+        print(f"\n[X] ФАЙЛ НЕ НАЙДЕН: {args.russian}")
         files_exist = False
     
     if not files_exist:
@@ -157,11 +174,11 @@ def main():
         return
 
     # Загрузка прогресса
-    print("\n⏳ Загрузка данных прогресса...")
+    print("\n[~] Загрузка данных прогресса...")
     checklist = load_checklist(args.progress)
     
     # Быстрая загрузка ключей
-    print("🔍 Загрузка файлов локализации...")
+    print("[*] Загрузка файлов локализации...")
     original_keys = parse_keys(args.original)
     russian_keys = parse_keys(args.russian)
     
@@ -170,7 +187,7 @@ def main():
     
     # Проверка наличия данных
     if not original_keys or not russian_keys:
-        print("\n⛔ Нет данных для сравнения. Проверьте файлы локализации.")
+        print("\n[X] Нет данных для сравнения. Проверьте файлы локализации.")
         print_file_help(script_dir)
         input("Нажмите Enter для выхода...")
         return
@@ -185,98 +202,109 @@ def main():
         
         # Заголовок
         print("═"*50)
-        print(f"🔍 ПРОВЕРКА ЛОКАЛИЗАЦИИ | Файлы: {os.path.basename(args.original)}, {os.path.basename(args.russian)}")
+        print(f"[*] ПРОВЕРКА ЛОКАЛИЗАЦИИ | Файлы: {os.path.basename(args.original)}, {os.path.basename(args.russian)}")
         print("═"*50)
         
         if total_keys == 0:
-            print("\n\033[92m🎉 ВСЕ КЛЮЧИ ПЕРЕВЕДЕНЫ! ЛОКАЛИЗАЦИЯ ЗАВЕРШЕНА.\033[0m")
+            print("\n[V] ВСЕ КЛЮЧИ ПЕРЕВЕДЕНЫ! ЛОКАЛИЗАЦИЯ ЗАВЕРШЕНА.")
             save_checklist(args.progress, checklist)
             input("\nНажмите Enter для выхода...")
             return
         
         # Статус
         translated_count = sum(1 for data in untranslated.values() 
-                             if checklist.get(data['id']) == "✅")
-        print(f"\n\033[1m📋 НЕПЕРЕВЕДЕННЫЕ КЛЮЧИ (Всего: {total_keys}):\033[0m")
+                             if checklist.get(data['id']) == "V")
+        print(f"\n[L] НЕПЕРЕВЕДЕННЫЕ КЛЮЧИ (Всего: {total_keys}):")
         print("(Новые ключи вверху с номерами 1, 2, 3...)")
         
         # Вывод ключей (первые 30)
-        print("\n\033[1mПоследние добавленные ключи:\033[0m")
+        print("\nПоследние добавленные ключи:")
         for idx in list(untranslated.keys())[:30]:
             data = untranslated[idx]
-            status = checklist.get(data['id'], "❌")
-            color = "\033[92m" if status == "✅" else "\033[91m"
-            print(f"{color}{idx:4d}. [{status}] Путь: {data['path']}\n      Ключ: {data['key']}\033[0m")
+            status = checklist.get(data['id'], "X")
+            status_display = "[V]" if status == "V" else "[X]"
+            
+            # Цветовое оформление
+            if status == "V":
+                color = "\033[92m"  # Зеленый
+            else:
+                color = "\033[91m"  # Красный
+            
+            reset = "\033[0m"
+            gray = "\033[90m"
+            
+            print(f"{color}{idx:4d}. {status_display} Путь: {gray}{data['path']}{reset}")
+            print(f"      Ключ: {color}{data['key']}{reset}")
         
         # Статистика
         print_progress(translated_count, total_keys)
         
         # Меню
-        print("\033[1m🔧 ДЕЙСТВИЯ:\033[0m")
+        print("[A] ДЕЙСТВИЯ:")
         print("1-30. Отметить/снять отметку по номеру ключа")
         print("S. Сохранить прогресс")
         print("R. Обновить список ключей")
         print("I. Показать информацию о файлах")
         print("Q. Выход")
         
-        choice = input("\n👉 ВЫБЕРИТЕ ДЕЙСТВИЕ: ").upper()
+        choice = input("\n>>> ВЫБЕРИТЕ ДЕЙСТВИЕ: ").upper()
         
         # Обработка выбора ключа (1-30)
         if choice.isdigit():
             idx = int(choice)
             if idx in untranslated:
                 data = untranslated[idx]
-                current_status = checklist.get(data['id'], "❌")
-                new_status = "✅" if current_status == "❌" else "❌"
+                current_status = checklist.get(data['id'], "X")
+                new_status = "V" if current_status == "X" else "X"
                 checklist[data['id']] = new_status
                 
-                action = "ОТМЕЧЕН КАК ПЕРЕВЕДЁННЫЙ" if new_status == "✅" else "СНЯТА ОТМЕТКА ПЕРЕВОДА"
-                print(f"\n🔔 КЛЮЧ #{idx} {action}!")
+                action = "ОТМЕЧЕН КАК ПЕРЕВЕДЁННЫЙ" if new_status == "V" else "СНЯТА ОТМЕТКА ПЕРЕВОДА"
+                print(f"\n[!] КЛЮЧ #{idx} {action}!")
             else:
-                print(f"⛔ КЛЮЧ С НОМЕРОМ {idx} НЕ НАЙДЕН!")
-            input("\n↵ НАЖМИТЕ ENTER ДЛЯ ПРОДОЛЖЕНИЯ...")
+                print(f"[X] КЛЮЧ С НОМЕРОМ {idx} НЕ НАЙДЕН!")
+            input("\nНажмите Enter для продолжения...")
         
         # Сохранить прогресс
         elif choice == 'S':
             if save_checklist(args.progress, checklist):
-                print("\n💾 ПРОГРЕСС СОХРАНЁН!")
+                print("\n[S] ПРОГРЕСС СОХРАНЁН!")
             else:
-                print("\n⚠️ НЕ УДАЛОСЬ СОХРАНИТЬ ПРОГРЕСС!")
-            input("↵ НАЖМИТЕ ENTER ДЛЯ ПРОДОЛЖЕНИЯ...")
+                print("\n[!] НЕ УДАЛОСЬ СОХРАНИТЬ ПРОГРЕСС!")
+            input("Нажмите Enter для продолжения...")
         
         # Обновить список ключей
         elif choice == 'R':
-            print("\n🔄 ОБНОВЛЕНИЕ СПИСКА КЛЮЧЕЙ...")
+            print("\n[R] ОБНОВЛЕНИЕ СПИСКА КЛЮЧЕЙ...")
             original_keys = parse_keys(args.original)
             russian_keys = parse_keys(args.russian)
             russian_clean_keys = {clean for _, (_, _, clean) in russian_keys.items()}
             untranslated = get_untranslated_keys(original_keys, russian_clean_keys, checklist)
             total_keys = len(untranslated)
-            print(f"✅ ЗАГРУЖЕНО {total_keys} КЛЮЧЕЙ")
-            input("↵ НАЖМИТЕ ENTER ДЛЯ ПРОДОЛЖЕНИЯ...")
+            print(f"[V] ЗАГРУЖЕНО {total_keys} КЛЮЧЕЙ")
+            input("Нажмите Enter для продолжения...")
         
         # Информация о файлах
         elif choice == 'I':
             print("\n" + "═"*50)
-            print("📂 ИНФОРМАЦИЯ О ФАЙЛАХ")
+            print("[F] ИНФОРМАЦИЯ О ФАЙЛАХ")
             print("═"*50)
-            print(f"🖥  Текущий рабочий каталог: {os.getcwd()}")
-            print(f"📂 Папка скрипта: {script_dir}")
-            print(f"🔍 Исходная локализация: {args.original}")
-            print(f"🔍 Русская локализация: {args.russian}")
-            print(f"📊 Файл прогресса: {args.progress}")
-            print(f"📝 Проверьте правильность путей и названий файлов")
+            print(f"[C] Текущий рабочий каталог: {os.getcwd()}")
+            print(f"[F] Папка скрипта: {script_dir}")
+            print(f"[*] Исходная локализация: {args.original}")
+            print(f"[*] Русская локализация: {args.russian}")
+            print(f"[P] Файл прогресса: {args.progress}")
+            print(f"[N] Проверьте правильность путей и названий файлов")
             print("═"*50)
-            input("\n↵ НАЖМИТЕ ENTER ДЛЯ ПРОДОЛЖЕНИЯ...")
+            input("\nНажмите Enter для продолжения...")
         
         # Выход
         elif choice == 'Q':
-            print("\n👋 ВЫХОД ИЗ ПРОГРАММЫ")
+            print("\nВыход из программы")
             break
         
         else:
-            print("⛔ НЕВЕРНЫЙ ВЫБОР. ПОПРОБУЙТЕ СНОВА.")
-            input("↵ НАЖМИТЕ ENTER ДЛЯ ПРОДОЛЖЕНИЯ...")
+            print("[X] НЕВЕРНЫЙ ВЫБОР. ПОПРОБУЙТЕ СНОВА.")
+            input("Нажмите Enter для продолжения...")
 
 if __name__ == "__main__":
     main()
