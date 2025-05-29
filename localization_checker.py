@@ -11,18 +11,18 @@ def get_script_directory():
 
 def clean_path(path):
     """Удаляет 'Robast' из пути"""
-    return re.sub(r'Robast', '', path)
+    return path.replace('Robast', '')  # Оптимизация: замена re.sub на str.replace
 
 def load_checklist(file_path):
     """Загружает прогресс из файла"""
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[!] Ошибка загрузки файла прогресса: {e}")
-            return {}
-    return {}
+    if not os.path.exists(file_path):
+        return {}
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[!] Ошибка загрузки файла прогресса: {e}")
+        return {}
 
 def save_checklist(file_path, checklist):
     """Сохраняет прогресс в файл"""
@@ -39,12 +39,8 @@ def should_skip_line(line):
     # Пропускаем пустые строки и комментарии
     if not line or line.startswith('#'):
         return True
-        
     # Пропускаем строки, содержащие Robast
-    if 'Robast' in line:
-        return True
-        
-    return False
+    return 'Robast' in line
 
 def parse_keys(file_path):
     """Быстрый парсинг файла локализации с фильтрацией"""
@@ -56,16 +52,11 @@ def parse_keys(file_path):
         
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-            # Обрабатываем строки в обратном порядке
-            for line in reversed(lines):
+            # Чтение файла в обратном порядке без создания полного списка строк
+            for line in reversed(f.readlines()):
                 line = line.strip()
                 
-                # Пропускаем комментарии и строки с Robast
-                if should_skip_line(line):
-                    continue
-                    
-                if '鎰' not in line:
+                if should_skip_line(line) or '鎰' not in line:
                     continue
                     
                 parts = line.split('鎰', 1)
@@ -74,7 +65,6 @@ def parse_keys(file_path):
                     
                 path, key = parts
                 clean = clean_path(path)
-                # Используем оригинальную строку как ключ
                 keys[f"{path}鎰{key}"] = (path, key, clean)
                 
         print(f"[V] Загружено ключей: {len(keys)}")
@@ -83,28 +73,28 @@ def parse_keys(file_path):
         print(f"[X] Ошибка чтения файла {file_path}: {e}")
         return keys
 
-def get_untranslated_keys(original_keys, russian_keys, checklist):
-    """Возвращает только непереведенные ключи с обратной нумерацией"""
+def get_untranslated_keys(original_keys, russian_clean_keys, checklist):
+    """Возвращает только непереведенные ключи с нумерацией"""
     untranslated = OrderedDict()
+    translated_count = 0
+    idx = 1
     
-    # Собираем все непереведенные ключи
-    all_untranslated = []
+    # Одновременно создаем список и считаем отмеченные ключи
     for key_id, (path, key, clean) in original_keys.items():
-        if clean not in russian_keys:
-            # Пропускаем отмеченные как переведенные
-            if checklist.get(key_id) == "V":
-                continue
-            all_untranslated.append((path, key, key_id))
-    
-    # Нумеруем в обратном порядке (новые ключи получают маленькие номера)
-    for idx, (path, key, key_id) in enumerate(reversed(all_untranslated), 1):
+        if clean in russian_clean_keys:
+            continue
+            
+        if checklist.get(key_id) == "V":
+            translated_count += 1
+            
         untranslated[idx] = {
             'path': path,
             'key': key,
             'id': key_id
         }
+        idx += 1
             
-    return untranslated
+    return untranslated, translated_count
 
 def print_progress(current, total):
     """Печатает прогресс-бар"""
@@ -129,7 +119,7 @@ def print_file_help(script_dir):
     print(f"1. Поместите файлы локализации в папку скрипта:")
     print(f"   [F] {script_dir}")
     print("2. Убедитесь, что файлы называются:")
-    print("   - original.txt - исходная локализация (например, английская)")
+    print("   - original.txt - исходная локализация")
     print("   - russian.txt - русская локализация")
     print("3. Или укажите пути к файлам при запуске:")
     print("   python localization_checker.py --original путь/к/original.txt --russian путь/к/russian.txt")
@@ -159,16 +149,10 @@ def main():
     print("═"*50)
     
     # Проверка существования файлов
-    files_exist = True
-    if not os.path.exists(args.original):
-        print(f"\n[X] ФАЙЛ НЕ НАЙДЕН: {args.original}")
-        files_exist = False
-    
-    if not os.path.exists(args.russian):
-        print(f"\n[X] ФАЙЛ НЕ НАЙДЕН: {args.russian}")
-        files_exist = False
-    
-    if not files_exist:
+    if not all(map(os.path.exists, [args.original, args.russian])):
+        missing = [f for f in [args.original, args.russian] if not os.path.exists(f)]
+        for f in missing:
+            print(f"\n[X] ФАЙЛ НЕ НАЙДЕН: {f}")
         print_file_help(script_dir)
         input("Нажмите Enter для выхода...")
         return
@@ -177,13 +161,10 @@ def main():
     print("\n[~] Загрузка данных прогресса...")
     checklist = load_checklist(args.progress)
     
-    # Быстрая загрузка ключей
+    # Загрузка ключей
     print("[*] Загрузка файлов локализации...")
     original_keys = parse_keys(args.original)
     russian_keys = parse_keys(args.russian)
-    
-    # Для русской локализации нам нужны только "чистые" ключи
-    russian_clean_keys = {clean for _, (_, _, clean) in russian_keys.items()}
     
     # Проверка наличия данных
     if not original_keys or not russian_keys:
@@ -192,8 +173,15 @@ def main():
         input("Нажмите Enter для выхода...")
         return
         
+    # Для русской локализации нужны только "чистые" ключи
+    russian_clean_keys = {clean for _, (_, _, clean) in russian_keys.items()}
+    
     # Инициализация списка ключей
-    untranslated = get_untranslated_keys(original_keys, russian_clean_keys, checklist)
+    untranslated, translated_count = get_untranslated_keys(
+        original_keys, 
+        russian_clean_keys, 
+        checklist
+    )
     total_keys = len(untranslated)
     
     # Основной интерактивный цикл
@@ -212,8 +200,6 @@ def main():
             return
         
         # Статус
-        translated_count = sum(1 for data in untranslated.values() 
-                             if checklist.get(data['id']) == "V")
         print(f"\n[L] НЕПЕРЕВЕДЕННЫЕ КЛЮЧИ (Всего: {total_keys}):")
         print("(Новые ключи вверху с номерами 1, 2, 3...)")
         
@@ -225,11 +211,7 @@ def main():
             status_display = "[V]" if status == "V" else "[X]"
             
             # Цветовое оформление
-            if status == "V":
-                color = "\033[92m"  # Зеленый
-            else:
-                color = "\033[91m"  # Красный
-            
+            color = "\033[92m" if status == "V" else "\033[91m"
             reset = "\033[0m"
             gray = "\033[90m"
             
@@ -258,6 +240,12 @@ def main():
                 new_status = "V" if current_status == "X" else "X"
                 checklist[data['id']] = new_status
                 
+                # Обновляем счетчик переведенных
+                if new_status == "V":
+                    translated_count += 1
+                elif current_status == "V":
+                    translated_count -= 1
+                
                 action = "ОТМЕЧЕН КАК ПЕРЕВЕДЁННЫЙ" if new_status == "V" else "СНЯТА ОТМЕТКА ПЕРЕВОДА"
                 print(f"\n[!] КЛЮЧ #{idx} {action}!")
             else:
@@ -278,7 +266,11 @@ def main():
             original_keys = parse_keys(args.original)
             russian_keys = parse_keys(args.russian)
             russian_clean_keys = {clean for _, (_, _, clean) in russian_keys.items()}
-            untranslated = get_untranslated_keys(original_keys, russian_clean_keys, checklist)
+            untranslated, translated_count = get_untranslated_keys(
+                original_keys, 
+                russian_clean_keys, 
+                checklist
+            )
             total_keys = len(untranslated)
             print(f"[V] ЗАГРУЖЕНО {total_keys} КЛЮЧЕЙ")
             input("Нажмите Enter для продолжения...")
